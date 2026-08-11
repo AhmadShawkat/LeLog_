@@ -4,9 +4,8 @@ import {
   type ValidatedLogBatch,
   type ValidatedLogEntry,
 } from './log-entry.js';
+import { parseIsoTimestamp } from './timestamp.js';
 
-const isoTimestampPattern =
-  /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const maximumFutureOffsetMs = 5 * 60 * 1_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -18,42 +17,8 @@ function validateTimestamp(value: unknown, nowMs: number): string | undefined {
     return 'timestamp must be a valid ISO 8601 date-time with a timezone';
   }
 
-  const match = isoTimestampPattern.exec(value);
-  if (!match) {
-    return 'timestamp must be a valid ISO 8601 date-time with a timezone';
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [
-    31,
-    leapYear ? 29 : 28,
-    31,
-    30,
-    31,
-    30,
-    31,
-    31,
-    30,
-    31,
-    30,
-    31,
-  ][month - 1];
-  if (
-    year === 0 ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    daysInMonth === undefined ||
-    day > daysInMonth
-  ) {
-    return 'timestamp must be a valid ISO 8601 date-time with a timezone';
-  }
-
-  const timestampMs = Date.parse(value);
-  if (!Number.isFinite(timestampMs)) {
+  const timestampMs = parseIsoTimestamp(value);
+  if (timestampMs === undefined) {
     return 'timestamp must be a valid ISO 8601 date-time with a timezone';
   }
 

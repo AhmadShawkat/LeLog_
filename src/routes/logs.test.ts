@@ -25,7 +25,7 @@ function logsApp() {
   const pool = new Pool();
   const query = vi
     .spyOn(pool, 'query')
-    .mockResolvedValue({ rowCount: 1 } as never);
+    .mockResolvedValue({ rowCount: 1, rows: [] } as never);
   const app = buildApp(config, {
     createPool: () => pool,
     migrate: vi.fn().mockResolvedValue(undefined),
@@ -155,5 +155,77 @@ describe('POST /logs', () => {
     expect(response.statusCode).toBe(500);
     expect(response.json()).toEqual({ error: 'Internal server error' });
     expect(response.body).not.toContain('database unavailable');
+  });
+});
+
+describe('GET /logs', () => {
+  it('returns filtered logs and a cursor for a non-exhausted page', async () => {
+    const { app, query } = logsApp();
+    query.mockResolvedValueOnce({
+      rowCount: 2,
+      rows: [
+        {
+          id: '2',
+          event_timestamp: new Date('2026-08-11T12:00:00.000Z'),
+          service: 'api',
+          level: 'error',
+          message: 'request failed',
+          attributes: { region: 'west' },
+        },
+        {
+          id: '1',
+          event_timestamp: new Date('2026-08-11T11:00:00.000Z'),
+          service: 'api',
+          level: 'error',
+          message: 'older failure',
+          attributes: { region: 'west' },
+        },
+      ],
+    } as never);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/logs?service=api&level=error&since=2026-08-01T00%3A00%3A00Z&until=2026-09-01T00%3A00%3A00Z&attr.region=west&q=failed&limit=1',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      logs: [
+        {
+          timestamp: '2026-08-11T12:00:00.000Z',
+          service: 'api',
+          level: 'error',
+          message: 'request failed',
+          attributes: { region: 'west' },
+        },
+      ],
+      next_cursor: expect.any(String),
+    });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY'), [
+      'api',
+      'error',
+      '2026-08-01T00:00:00Z',
+      '2026-09-01T00:00:00Z',
+      JSON.stringify({ region: 'west' }),
+      'failed',
+      2,
+    ]);
+  });
+
+  it.each([
+    ['/logs?level=fatal', 'level must be one of'],
+    ['/logs?since=yesterday', 'since must be a valid ISO 8601'],
+    ['/logs?limit=1001', 'limit must be an integer'],
+    ['/logs?cursor=invalid', 'cursor is malformed'],
+  ])('returns { error } with 400 for %s', async (url, message) => {
+    const { app, query } = logsApp();
+
+    const response = await app.inject({ method: 'GET', url });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: expect.stringContaining(message),
+    });
+    expect(query).not.toHaveBeenCalled();
   });
 });
