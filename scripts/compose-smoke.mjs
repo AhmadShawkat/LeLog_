@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import console from 'node:console';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { URLSearchParams } from 'node:url';
 
 const compose = process.platform === 'win32' ? 'docker.exe' : 'docker';
 const projectName = 'log-service-smoke';
@@ -51,6 +52,19 @@ async function postLogs(entries) {
   return { response, body };
 }
 
+async function getJson(path) {
+  const response = await globalThis.fetch(
+    `http://127.0.0.1:${applicationPort}${path}`,
+  );
+  const body = await response.json();
+
+  return { response, body };
+}
+
+function isoTimestamp(date) {
+  return date.toISOString();
+}
+
 async function runSmokeTest() {
   runCompose(['up', '--build', '--detach', '--wait']);
   runCompose([
@@ -75,7 +89,7 @@ async function runSmokeTest() {
     '--command',
     'SELECT count(*) FROM schema_migrations',
   ]).trim();
-  assert.equal(appliedMigrations, '2');
+  assert.equal(appliedMigrations, '3');
 
   const healthy = await getHealth();
   assert.equal(healthy.response.status, 200);
@@ -84,17 +98,37 @@ async function runSmokeTest() {
     database: 'reachable',
   });
 
-  const timestamp = new Date().toISOString();
+  const bucketStart = new Date();
+  bucketStart.setUTCSeconds(0, 0);
+  const firstTimestamp = isoTimestamp(new Date(bucketStart.getTime() + 10_000));
+  const secondTimestamp = isoTimestamp(
+    new Date(bucketStart.getTime() + 20_000),
+  );
+  const thirdTimestamp = isoTimestamp(new Date(bucketStart.getTime() + 30_000));
   const ingestion = await postLogs([
     {
-      timestamp,
+      timestamp: firstTimestamp,
       service: 'compose-smoke',
       level: 'info',
-      message: 'durable ingestion check',
-      attributes: { attempt: 1, cached: false },
+      message: 'required contract first event',
+      attributes: { attempt: 1, cached: false, region: 'west' },
     },
     {
-      timestamp,
+      timestamp: secondTimestamp,
+      service: 'compose-smoke',
+      level: 'info',
+      message: 'required contract second event',
+      attributes: { attempt: 2, cached: true, region: 'west' },
+    },
+    {
+      timestamp: thirdTimestamp,
+      service: 'background-worker',
+      level: 'error',
+      message: 'unrelated event',
+      attributes: { region: 'east' },
+    },
+    {
+      timestamp: thirdTimestamp,
       service: 'compose-smoke',
       level: 'fatal',
       message: 'rejected ingestion check',
@@ -102,10 +136,10 @@ async function runSmokeTest() {
   ]);
   assert.equal(ingestion.response.status, 200);
   assert.deepEqual(ingestion.body, {
-    accepted: 1,
+    accepted: 3,
     rejected: [
       {
-        index: 1,
+        index: 3,
         reason: 'level must be one of debug, info, warn, or error',
       },
     ],
@@ -125,9 +159,65 @@ async function runSmokeTest() {
     '--field-separator',
     '|',
     '--command',
-    "SELECT service, attributes->>'attempt', attributes_text->>'attempt', attributes_text->>'cached' FROM logs",
+    "SELECT service, attributes->>'attempt', attributes_text->>'attempt', attributes_text->>'cached' FROM logs WHERE service = 'compose-smoke' ORDER BY event_timestamp",
   ]).trim();
-  assert.equal(storedLog, 'compose-smoke|1|1|false');
+  assert.equal(storedLog, 'compose-smoke|1|1|false\ncompose-smoke|2|2|true');
+
+  const queryParameters = new URLSearchParams({
+    service: 'compose-smoke',
+    level: 'info',
+    q: 'CONTRACT',
+    'attr.region': 'west',
+    limit: '1',
+  });
+  const firstPage = await getJson(`/logs?${queryParameters}`);
+  assert.equal(firstPage.response.status, 200);
+  assert.deepEqual(firstPage.body.logs, [
+    {
+      timestamp: secondTimestamp,
+      service: 'compose-smoke',
+      level: 'info',
+      message: 'required contract second event',
+      attributes: { cached: true, region: 'west', attempt: 2 },
+    },
+  ]);
+  assert.equal(typeof firstPage.body.next_cursor, 'string');
+
+  queryParameters.set('cursor', firstPage.body.next_cursor);
+  const secondPage = await getJson(`/logs?${queryParameters}`);
+  assert.equal(secondPage.response.status, 200);
+  assert.deepEqual(secondPage.body, {
+    logs: [
+      {
+        timestamp: firstTimestamp,
+        service: 'compose-smoke',
+        level: 'info',
+        message: 'required contract first event',
+        attributes: { cached: false, region: 'west', attempt: 1 },
+      },
+    ],
+    next_cursor: null,
+  });
+
+  const aggregateParameters = new URLSearchParams({
+    since: isoTimestamp(bucketStart),
+    until: isoTimestamp(new Date(bucketStart.getTime() + 60_000)),
+    bucket: '1m',
+    group_by: 'level',
+    service: 'compose-smoke',
+    'attr.region': 'west',
+  });
+  const aggregation = await getJson(`/logs/aggregate?${aggregateParameters}`);
+  assert.equal(aggregation.response.status, 200);
+  assert.deepEqual(aggregation.body, {
+    buckets: [
+      {
+        timestamp: isoTimestamp(bucketStart),
+        count: 2,
+        group: 'info',
+      },
+    ],
+  });
 
   runCompose(['stop', 'database']);
 
@@ -148,7 +238,7 @@ async function runSmokeTest() {
     status: 'unavailable',
     database: 'unreachable',
   });
-  console.log('Compose service smoke test passed.');
+  console.log('Required-contract Compose smoke test passed.');
 }
 
 async function main() {
