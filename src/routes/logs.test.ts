@@ -229,3 +229,107 @@ describe('GET /logs', () => {
     expect(query).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /logs/aggregate', () => {
+  it('returns exact grouped buckets in database order', async () => {
+    const { app, query } = logsApp();
+    query.mockResolvedValueOnce({
+      rowCount: 2,
+      rows: [
+        {
+          bucket_timestamp: new Date('2026-08-11T12:00:00Z'),
+          group_value: 'api',
+          count: '4',
+        },
+        {
+          bucket_timestamp: new Date('2026-08-11T12:05:00Z'),
+          group_value: 'api',
+          count: '2',
+        },
+      ],
+    } as never);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/logs/aggregate?since=2026-08-11T12%3A00%3A00Z&until=2026-08-11T13%3A00%3A00Z&bucket=5m&group_by=service&service=api&attr.region=west',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      buckets: [
+        {
+          timestamp: '2026-08-11T12:00:00.000Z',
+          count: 4,
+          group: 'api',
+        },
+        {
+          timestamp: '2026-08-11T12:05:00.000Z',
+          count: 2,
+          group: 'api',
+        },
+      ],
+    });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('date_bin'), [
+      'api',
+      '2026-08-11T12:00:00Z',
+      '2026-08-11T13:00:00Z',
+      JSON.stringify({ region: 'west' }),
+      '5 minutes',
+    ]);
+  });
+
+  it('returns null groups and no synthetic empty buckets', async () => {
+    const { app, query } = logsApp();
+    query.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [
+        {
+          bucket_timestamp: '2026-08-11T12:00:00Z',
+          group_value: null,
+          count: '1',
+        },
+      ],
+    } as never);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/logs/aggregate?since=2026-08-11T12%3A00%3A00Z&until=2026-08-11T13%3A00%3A00Z&bucket=1h',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      buckets: [
+        {
+          timestamp: '2026-08-11T12:00:00.000Z',
+          count: 1,
+          group: null,
+        },
+      ],
+    });
+  });
+
+  it.each([
+    [
+      '/logs/aggregate?until=2026-08-11T13%3A00%3A00Z&bucket=1h',
+      'since is required',
+    ],
+    [
+      '/logs/aggregate?since=2026-08-11T12%3A00%3A00Z&until=2026-08-11T13%3A00%3A00Z&bucket=10m',
+      'bucket must be one of',
+    ],
+    [
+      '/logs/aggregate?since=2026-08-11T12%3A00%3A00Z&until=2026-08-11T13%3A00%3A00Z&bucket=1h&group_by=message',
+      'group_by must be service or level',
+    ],
+  ])('returns { error } with 400 for %s', async (url, message) => {
+    const { app, query } = logsApp();
+
+    const response = await app.inject({ method: 'GET', url });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      error: expect.stringContaining(message),
+    });
+    expect(query).not.toHaveBeenCalled();
+  });
+});

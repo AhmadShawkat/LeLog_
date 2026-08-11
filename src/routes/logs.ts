@@ -1,9 +1,20 @@
 import type { FastifyInstance } from 'fastify';
+import { aggregateLogs } from '../logs/aggregation.js';
+import { validateAggregationQuery } from '../logs/aggregation-validation.js';
 import { ingestLogBatch } from '../logs/ingestion.js';
 import { queryLogs } from '../logs/querying.js';
 import { validateLogQuery } from '../logs/query-validation.js';
 
 export function registerLogRoutes(app: FastifyInstance): void {
+  app.get('/logs/aggregate', async (request, reply) => {
+    const validation = validateAggregationQuery(request.query);
+    if ('error' in validation) {
+      return reply.code(400).send({ error: validation.error });
+    }
+
+    return aggregateLogs(app.db, validation.filters);
+  });
+
   app.get('/logs', async (request, reply) => {
     const validation = validateLogQuery(request.query);
     if ('error' in validation) {

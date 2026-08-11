@@ -12,8 +12,13 @@ function escapeLikePattern(value: string): string {
     .replaceAll('_', '\\_');
 }
 
-export function buildLogQuery(filters: LogQueryFilters): BuiltLogQuery {
-  const values: unknown[] = [];
+export function buildLogFilterWhere(
+  filters: Pick<
+    LogQueryFilters,
+    'service' | 'level' | 'since' | 'until' | 'attributes' | 'q'
+  >,
+  values: unknown[],
+): string {
   const conditions: string[] = [];
   const parameter = (value: unknown): string => {
     values.push(value);
@@ -46,16 +51,29 @@ export function buildLogQuery(filters: LogQueryFilters): BuiltLogQuery {
       `message ILIKE '%' || ${parameter(escapeLikePattern(filters.q))} || '%' ESCAPE '\\'`,
     );
   }
+
+  return conditions.length === 0
+    ? ''
+    : `\n  WHERE ${conditions.join('\n    AND ')}`;
+}
+
+export function buildLogQuery(filters: LogQueryFilters): BuiltLogQuery {
+  const values: unknown[] = [];
+  const parameter = (value: unknown): string => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+
+  let where = buildLogFilterWhere(filters, values);
   if (filters.cursor !== undefined) {
     const timestamp = parameter(filters.cursor.timestamp);
     const id = parameter(filters.cursor.id);
-    conditions.push(
-      `(event_timestamp, id) < (${timestamp}::timestamptz, ${id}::bigint)`,
-    );
+    const cursorCondition = `(event_timestamp, id) < (${timestamp}::timestamptz, ${id}::bigint)`;
+    where =
+      where.length === 0
+        ? `\n  WHERE ${cursorCondition}`
+        : `${where}\n    AND ${cursorCondition}`;
   }
-
-  const where =
-    conditions.length === 0 ? '' : `\n  WHERE ${conditions.join('\n    AND ')}`;
   const limit = parameter(filters.limit + 1);
   return {
     text: `
