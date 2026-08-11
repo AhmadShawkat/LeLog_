@@ -14,6 +14,10 @@ describe('loadConfig', () => {
       DB_POOL_MAX: 20,
       DB_IDLE_TIMEOUT_MS: 30_000,
       DB_CONNECTION_TIMEOUT_MS: 5_000,
+      RETENTION_DAYS: 30,
+      RETENTION_INTERVAL_MS: 60_000,
+      RETENTION_BATCH_SIZE: 5_000,
+      RETENTION_MAX_BATCHES_PER_RUN: 10,
     });
     expect(Object.isFrozen(config)).toBe(true);
   });
@@ -29,6 +33,10 @@ describe('loadConfig', () => {
         DB_POOL_MAX: '40',
         DB_IDLE_TIMEOUT_MS: '10000',
         DB_CONNECTION_TIMEOUT_MS: '2500',
+        RETENTION_DAYS: '90',
+        RETENTION_INTERVAL_MS: '300000',
+        RETENTION_BATCH_SIZE: '10000',
+        RETENTION_MAX_BATCHES_PER_RUN: '20',
       }),
     ).toEqual({
       HOST: '127.0.0.1',
@@ -39,6 +47,10 @@ describe('loadConfig', () => {
       DB_POOL_MAX: 40,
       DB_IDLE_TIMEOUT_MS: 10_000,
       DB_CONNECTION_TIMEOUT_MS: 2_500,
+      RETENTION_DAYS: 90,
+      RETENTION_INTERVAL_MS: 300_000,
+      RETENTION_BATCH_SIZE: 10_000,
+      RETENTION_MAX_BATCHES_PER_RUN: 20,
     });
   });
 
@@ -73,6 +85,14 @@ describe('loadConfig', () => {
     ['DB_IDLE_TIMEOUT_MS', '600001'],
     ['DB_CONNECTION_TIMEOUT_MS', '0'],
     ['DB_CONNECTION_TIMEOUT_MS', '120001'],
+    ['RETENTION_DAYS', '0'],
+    ['RETENTION_DAYS', '3651'],
+    ['RETENTION_INTERVAL_MS', '999'],
+    ['RETENTION_INTERVAL_MS', '86400001'],
+    ['RETENTION_BATCH_SIZE', '0'],
+    ['RETENTION_BATCH_SIZE', '50001'],
+    ['RETENTION_MAX_BATCHES_PER_RUN', '0'],
+    ['RETENTION_MAX_BATCHES_PER_RUN', '101'],
   ] as const)('rejects invalid %s %j', (name, value) => {
     expect(() => loadConfig({ [name]: value })).toThrow(new RegExp(name));
   });

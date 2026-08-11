@@ -5,7 +5,11 @@ describe('migrations', () => {
   it('defines unique migrations in version order', () => {
     const versions = migrations.map(({ version }) => version);
 
-    expect(versions).toEqual(['001_create_logs', '002_create_log_indexes']);
+    expect(versions).toEqual([
+      '001_create_logs',
+      '002_create_log_indexes',
+      '003_tune_logs_autovacuum',
+    ]);
     expect(new Set(versions).size).toBe(versions.length);
   });
 
@@ -34,5 +38,14 @@ describe('migrations', () => {
     expect(indexes).toMatch(/\(level, event_timestamp DESC, id DESC\)/);
     expect(indexes).toMatch(/GIN \(attributes_text jsonb_path_ops\)/);
     expect(indexes).toMatch(/GIN \(message gin_trgm_ops\)/);
+  });
+
+  it('vacuum analyzes retained logs before dead tuples accumulate excessively', () => {
+    const settings = migrations[2]?.sql ?? '';
+
+    expect(settings).toMatch(/autovacuum_vacuum_scale_factor = 0\.02/);
+    expect(settings).toMatch(/autovacuum_vacuum_threshold = 1000/);
+    expect(settings).toMatch(/autovacuum_analyze_scale_factor = 0\.01/);
+    expect(settings).toMatch(/autovacuum_analyze_threshold = 1000/);
   });
 });

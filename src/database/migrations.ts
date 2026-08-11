@@ -42,4 +42,15 @@ export const migrations: readonly Migration[] = Object.freeze([
         ON logs USING GIN (message gin_trgm_ops);
     `.trim(),
   }),
+  Object.freeze({
+    version: '003_tune_logs_autovacuum',
+    sql: `
+      ALTER TABLE logs SET (
+        autovacuum_vacuum_scale_factor = 0.02,
+        autovacuum_vacuum_threshold = 1000,
+        autovacuum_analyze_scale_factor = 0.01,
+        autovacuum_analyze_threshold = 1000
+      );
+    `.trim(),
+  }),
 ]);

@@ -34,10 +34,15 @@ describe('runMigrations', () => {
 
     const statements = database.query.mock.calls.map(([text]) => text);
     expect(statements[0]).toBe('SELECT pg_advisory_lock($1)');
-    expect(statements.filter((text) => text === 'BEGIN')).toHaveLength(2);
-    expect(statements.filter((text) => text === 'COMMIT')).toHaveLength(2);
-    expect(statements).toContain(migrations[0]?.sql);
-    expect(statements).toContain(migrations[1]?.sql);
+    expect(statements.filter((text) => text === 'BEGIN')).toHaveLength(
+      migrations.length,
+    );
+    expect(statements.filter((text) => text === 'COMMIT')).toHaveLength(
+      migrations.length,
+    );
+    for (const migration of migrations) {
+      expect(statements).toContain(migration.sql);
+    }
     expect(statements.at(-1)).toBe('SELECT pg_advisory_unlock($1)');
     expect(database.release).toHaveBeenCalledOnce();
 
@@ -46,7 +51,7 @@ describe('runMigrations', () => {
         text ===
         'INSERT INTO schema_migrations (version, checksum) VALUES ($1, $2)',
     );
-    expect(inserts).toHaveLength(2);
+    expect(inserts).toHaveLength(migrations.length);
     expect(inserts[0]?.[1]).toEqual([
       '001_create_logs',
       migrationChecksum(migrations[0]?.sql ?? ''),

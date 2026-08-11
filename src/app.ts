@@ -4,6 +4,10 @@ import type { Pool } from 'pg';
 import type { AppConfig } from './config.js';
 import { runMigrations } from './database/migration-runner.js';
 import { createDatabasePool, type PoolFactory } from './database/pool.js';
+import {
+  createRetentionWorker,
+  type RetentionWorkerFactory,
+} from './retention/worker.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerLogRoutes } from './routes/logs.js';
 
@@ -16,6 +20,7 @@ declare module 'fastify' {
 export interface AppDependencies {
   createPool: PoolFactory;
   migrate(pool: Pool): Promise<void>;
+  createRetention: RetentionWorkerFactory;
 }
 
 export function buildApp(
@@ -30,6 +35,9 @@ export function buildApp(
   const poolFactory = dependencies.createPool ?? createDatabasePool;
   const migrate = dependencies.migrate ?? runMigrations;
   const pool = poolFactory(config);
+  const retentionFactory =
+    dependencies.createRetention ?? createRetentionWorker;
+  const retention = retentionFactory(pool, config, app.log);
 
   app.setErrorHandler((error, _request, reply) => {
     const errorCode =
@@ -58,8 +66,14 @@ export function buildApp(
   });
   registerHealthRoute(app);
   registerLogRoutes(app);
-  app.addHook('onReady', async () => migrate(pool));
-  app.addHook('onClose', async () => pool.end());
+  app.addHook('onReady', async () => {
+    await migrate(pool);
+    retention.start();
+  });
+  app.addHook('onClose', async () => {
+    await retention.stop();
+    await pool.end();
+  });
 
   return app;
 }

@@ -42,6 +42,10 @@ const configSchema = z.object({
   DB_POOL_MAX: integerSchema(1, 100).default(20),
   DB_IDLE_TIMEOUT_MS: integerSchema(0, 600_000).default(30_000),
   DB_CONNECTION_TIMEOUT_MS: integerSchema(1, 120_000).default(5_000),
+  RETENTION_DAYS: integerSchema(1, 3_650).default(30),
+  RETENTION_INTERVAL_MS: integerSchema(1_000, 86_400_000).default(60_000),
+  RETENTION_BATCH_SIZE: integerSchema(1, 50_000).default(5_000),
+  RETENTION_MAX_BATCHES_PER_RUN: integerSchema(1, 100).default(10),
 });
 
 export type AppConfig = Readonly<z.infer<typeof configSchema>>;

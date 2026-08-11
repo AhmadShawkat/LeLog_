@@ -13,6 +13,10 @@ const config: AppConfig = {
   DB_POOL_MAX: 20,
   DB_IDLE_TIMEOUT_MS: 30_000,
   DB_CONNECTION_TIMEOUT_MS: 5_000,
+  RETENTION_DAYS: 30,
+  RETENTION_INTERVAL_MS: 60_000,
+  RETENTION_BATCH_SIZE: 5_000,
+  RETENTION_MAX_BATCHES_PER_RUN: 10,
 };
 
 const apps: ReturnType<typeof buildApp>[] = [];
@@ -29,6 +33,7 @@ function logsApp() {
   const app = buildApp(config, {
     createPool: () => pool,
     migrate: vi.fn().mockResolvedValue(undefined),
+    createRetention: () => ({ start: vi.fn(), stop: vi.fn() }),
   });
   apps.push(app);
 
