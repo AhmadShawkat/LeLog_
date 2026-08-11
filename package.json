@@ -1,0 +1,49 @@
+{
+  "name": "log-ingestion-and-query-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A high-throughput structured log ingestion, query, aggregation, and retention service.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "dev:dashboard": "vite",
+    "build": "npm run build:server && npm run build:dashboard",
+    "build:server": "tsc -p tsconfig.build.json",
+    "build:dashboard": "vite build",
+    "start": "node dist/server/server.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p dashboard/tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.3",
+    "fastify": "5.11.3",
+    "pg": "8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.2.0",
+    "@types/pg": "8.21.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.1",
+    "prettier": "3.9.6",
+    "tsx": "4.23.11",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.66.0",
+    "vite": "8.2.1",
+    "vitest": "4.1.10"
+  }
+}
