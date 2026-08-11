@@ -37,6 +37,20 @@ async function getHealth() {
   return { response, body };
 }
 
+async function postLogs(entries) {
+  const response = await globalThis.fetch(
+    `http://127.0.0.1:${applicationPort}/logs`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ logs: entries }),
+    },
+  );
+  const body = await response.json();
+
+  return { response, body };
+}
+
 async function runSmokeTest() {
   runCompose(['up', '--build', '--detach', '--wait']);
   runCompose([
@@ -70,6 +84,51 @@ async function runSmokeTest() {
     database: 'reachable',
   });
 
+  const timestamp = new Date().toISOString();
+  const ingestion = await postLogs([
+    {
+      timestamp,
+      service: 'compose-smoke',
+      level: 'info',
+      message: 'durable ingestion check',
+      attributes: { attempt: 1, cached: false },
+    },
+    {
+      timestamp,
+      service: 'compose-smoke',
+      level: 'fatal',
+      message: 'rejected ingestion check',
+    },
+  ]);
+  assert.equal(ingestion.response.status, 200);
+  assert.deepEqual(ingestion.body, {
+    accepted: 1,
+    rejected: [
+      {
+        index: 1,
+        reason: 'level must be one of debug, info, warn, or error',
+      },
+    ],
+  });
+
+  const storedLog = runCompose([
+    'exec',
+    '--no-TTY',
+    'database',
+    'psql',
+    '--username',
+    'log_service',
+    '--dbname',
+    'log_service',
+    '--tuples-only',
+    '--no-align',
+    '--field-separator',
+    '|',
+    '--command',
+    "SELECT service, attributes->>'attempt', attributes_text->>'attempt', attributes_text->>'cached' FROM logs",
+  ]).trim();
+  assert.equal(storedLog, 'compose-smoke|1|1|false');
+
   runCompose(['stop', 'database']);
 
   let unavailable;
@@ -89,7 +148,7 @@ async function runSmokeTest() {
     status: 'unavailable',
     database: 'unreachable',
   });
-  console.log('Compose health smoke test passed.');
+  console.log('Compose service smoke test passed.');
 }
 
 async function main() {
