@@ -66,6 +66,29 @@ describe('buildApp', () => {
     expect(end).toHaveBeenCalledOnce();
   });
 
+  it('does not become ready until migrations finish', async () => {
+    let finishMigration: (() => void) | undefined;
+    const migrationPending = new Promise<void>((resolve) => {
+      finishMigration = resolve;
+    });
+    const { dependencies, migrate } = testDependencies();
+    migrate.mockReturnValue(migrationPending);
+    const app = buildApp(silentConfig, dependencies);
+    let becameReady = false;
+
+    const readiness = app.ready().then(() => {
+      becameReady = true;
+    });
+    await vi.waitFor(() => expect(migrate).toHaveBeenCalledOnce());
+
+    expect(becameReady).toBe(false);
+    finishMigration?.();
+    await readiness;
+    expect(becameReady).toBe(true);
+
+    await app.close();
+  });
+
   it('closes its pool when migration fails', async () => {
     const pool = new Pool();
     const end = vi.spyOn(pool, 'end').mockResolvedValue(undefined);

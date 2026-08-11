@@ -21,6 +21,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p dashboard/tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
+    "test:compose": "node scripts/compose-smoke.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

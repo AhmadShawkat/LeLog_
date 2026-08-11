@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import type { AppConfig } from './config.js';
 import { runMigrations } from './database/migration-runner.js';
 import { createDatabasePool, type PoolFactory } from './database/pool.js';
+import { registerHealthRoute } from './routes/health.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -33,6 +34,7 @@ export function buildApp(
   pool.on('error', (error) => {
     app.log.error({ err: error }, 'Unexpected error from idle database client');
   });
+  registerHealthRoute(app);
   app.addHook('onReady', async () => migrate(pool));
   app.addHook('onClose', async () => pool.end());
 
