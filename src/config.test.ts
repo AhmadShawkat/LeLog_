@@ -10,6 +10,10 @@ describe('loadConfig', () => {
       PORT: 8080,
       LOG_LEVEL: 'info',
       NODE_ENV: 'development',
+      DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/log_service',
+      DB_POOL_MAX: 20,
+      DB_IDLE_TIMEOUT_MS: 30_000,
+      DB_CONNECTION_TIMEOUT_MS: 5_000,
     });
     expect(Object.isFrozen(config)).toBe(true);
   });
@@ -21,12 +25,20 @@ describe('loadConfig', () => {
         PORT: '65535',
         LOG_LEVEL: 'debug',
         NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://app:password@database:5432/logs',
+        DB_POOL_MAX: '40',
+        DB_IDLE_TIMEOUT_MS: '10000',
+        DB_CONNECTION_TIMEOUT_MS: '2500',
       }),
     ).toEqual({
       HOST: '127.0.0.1',
       PORT: 65_535,
       LOG_LEVEL: 'debug',
       NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://app:password@database:5432/logs',
+      DB_POOL_MAX: 40,
+      DB_IDLE_TIMEOUT_MS: 10_000,
+      DB_CONNECTION_TIMEOUT_MS: 2_500,
     });
   });
 
@@ -44,6 +56,25 @@ describe('loadConfig', () => {
 
   it('rejects an invalid LOG_LEVEL', () => {
     expect(() => loadConfig({ LOG_LEVEL: 'verbose' })).toThrow(/LOG_LEVEL/);
+  });
+
+  it.each(['', 'https://database.example/logs', 'not-a-url'])(
+    'rejects invalid DATABASE_URL %j',
+    (DATABASE_URL) => {
+      expect(() => loadConfig({ DATABASE_URL })).toThrow(/DATABASE_URL/);
+    },
+  );
+
+  it.each([
+    ['DB_POOL_MAX', '0'],
+    ['DB_POOL_MAX', '101'],
+    ['DB_POOL_MAX', '1.5'],
+    ['DB_IDLE_TIMEOUT_MS', '-1'],
+    ['DB_IDLE_TIMEOUT_MS', '600001'],
+    ['DB_CONNECTION_TIMEOUT_MS', '0'],
+    ['DB_CONNECTION_TIMEOUT_MS', '120001'],
+  ] as const)('rejects invalid %s %j', (name, value) => {
+    expect(() => loadConfig({ [name]: value })).toThrow(new RegExp(name));
   });
 
   it('does not expose unrelated environment values in validation errors', () => {

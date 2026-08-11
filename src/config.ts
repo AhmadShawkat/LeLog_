@@ -6,6 +6,27 @@ const portSchema = z
   .transform(Number)
   .pipe(z.number().int().max(65_535, 'must be at most 65535'));
 
+function integerSchema(minimum: number, maximum: number) {
+  return z
+    .string()
+    .regex(/^\d+$/, `must be a whole number from ${minimum} to ${maximum}`)
+    .transform(Number)
+    .pipe(z.number().int().min(minimum).max(maximum));
+}
+
+const databaseUrlSchema = z
+  .string()
+  .trim()
+  .min(1, 'must not be empty')
+  .refine((value) => {
+    try {
+      const protocol = new URL(value).protocol;
+      return protocol === 'postgres:' || protocol === 'postgresql:';
+    } catch {
+      return false;
+    }
+  }, 'must be a valid PostgreSQL connection URL');
+
 const configSchema = z.object({
   HOST: z.string().trim().min(1, 'must not be empty').default('0.0.0.0'),
   PORT: portSchema.default(8080),
@@ -15,6 +36,12 @@ const configSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
+  DATABASE_URL: databaseUrlSchema.default(
+    'postgresql://postgres:postgres@127.0.0.1:5432/log_service',
+  ),
+  DB_POOL_MAX: integerSchema(1, 100).default(20),
+  DB_IDLE_TIMEOUT_MS: integerSchema(0, 600_000).default(30_000),
+  DB_CONNECTION_TIMEOUT_MS: integerSchema(1, 120_000).default(5_000),
 });
 
 export type AppConfig = Readonly<z.infer<typeof configSchema>>;

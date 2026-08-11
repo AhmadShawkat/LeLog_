@@ -7,6 +7,10 @@ const config: AppConfig = {
   PORT: 8080,
   LOG_LEVEL: 'silent',
   NODE_ENV: 'test',
+  DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/log_service',
+  DB_POOL_MAX: 20,
+  DB_IDLE_TIMEOUT_MS: 30_000,
+  DB_CONNECTION_TIMEOUT_MS: 5_000,
 };
 
 function fakeServer(
