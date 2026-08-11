@@ -14,7 +14,7 @@ function runCompose(arguments_) {
     ['compose', '--project-name', projectName, ...arguments_],
     {
       encoding: 'utf8',
-      env: { ...process.env, APP_PORT: applicationPort },
+      env: { ...process.env, APP_PORT: applicationPort, DB_PORT: '0' },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
