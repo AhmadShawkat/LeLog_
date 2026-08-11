@@ -30,7 +30,7 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 8080
-      LOG_LEVEL: info
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://log_service:log_service@database:5432/log_service
       DB_POOL_MAX: 20
       DB_IDLE_TIMEOUT_MS: 30000
