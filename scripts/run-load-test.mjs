@@ -35,6 +35,7 @@ const profile = quick
       batchSize: 100,
       mixedBatchRate: 5,
       mixedDurationSeconds: 10,
+      aggregationWindowHours: 24,
       seedVus: 5,
       maximumIngestionVus: 20,
     }
@@ -45,6 +46,7 @@ const profile = quick
       batchSize: 1_000,
       mixedBatchRate: 16,
       mixedDurationSeconds: 20,
+      aggregationWindowHours: 24,
       seedVus: 4,
       maximumIngestionVus: 60,
     };
@@ -167,6 +169,7 @@ async function runK6Phase(phase, datasetEndMs, containerIds) {
     BATCH_SIZE: String(profile.batchSize),
     MIXED_BATCH_RATE: String(profile.mixedBatchRate),
     MIXED_DURATION_SECONDS: String(profile.mixedDurationSeconds),
+    AGGREGATION_WINDOW_HOURS: String(profile.aggregationWindowHours),
     SEED_VUS: String(profile.seedVus),
     MAXIMUM_INGESTION_VUS: String(profile.maximumIngestionVus),
     SUMMARY_PATH: `/results/${summaryFile}`,
@@ -255,6 +258,23 @@ function queryDatabase(sql, variables = {}) {
     input: `${sql}\n`,
     stdio: ['pipe', 'pipe', 'pipe'],
   }).stdout.trim();
+}
+
+function readDatabaseStatistics() {
+  return JSON.parse(
+    queryDatabase(`
+      SELECT json_build_object(
+        'captured_at', clock_timestamp(),
+        'wal', (SELECT to_jsonb(wal) FROM pg_stat_wal AS wal),
+        'io', (SELECT json_agg(to_jsonb(io)) FROM pg_stat_io AS io),
+        'table_activity', (
+          SELECT to_jsonb(activity)
+          FROM pg_stat_user_tables AS activity
+          WHERE relname = 'logs'
+        )
+      );
+    `),
+  );
 }
 
 function inspectResourceLimits(containerIds) {
@@ -457,7 +477,17 @@ async function runLoadTest() {
   );
   assert.equal(seedCount, profile.seedLogs, 'seed row count is not durable');
 
+  console.log('Stabilizing the seeded dataset before measured traffic...');
+  const stabilizationStartedAt = Date.now();
+  queryDatabase('VACUUM ANALYZE logs;\nCHECKPOINT;');
+  const stabilizationDurationMs = Date.now() - stabilizationStartedAt;
+  console.log(
+    `[stabilization] VACUUM ANALYZE and CHECKPOINT completed in ${formatMilliseconds(stabilizationDurationMs)}`,
+  );
+
+  const databaseStatisticsBeforeMixed = readDatabaseStatistics();
   const mixedSummary = await runK6Phase('mixed', datasetEndMs, containerIds);
+  const databaseStatisticsAfterMixed = readDatabaseStatistics();
   const durableMainLogCount =
     metric(seedSummary, 'accepted_logs').count +
     metric(mixedSummary, 'accepted_logs').count;
@@ -469,7 +499,62 @@ async function runLoadTest() {
         'minimum_timestamp', MIN(event_timestamp) FILTER (WHERE attributes_text ->> 'run_id' = :'run_id'),
         'maximum_timestamp', MAX(event_timestamp) FILTER (WHERE attributes_text ->> 'run_id' = :'run_id'),
         'database_bytes', pg_database_size(current_database()),
-        'logs_table_bytes', pg_total_relation_size('logs')
+        'logs_table_bytes', pg_total_relation_size('logs'),
+        'logs_heap_bytes', pg_relation_size('logs'),
+        'settings', (
+          SELECT json_object_agg(
+            name,
+            json_build_object('setting', setting, 'unit', unit)
+            ORDER BY name
+          )
+          FROM pg_settings
+          WHERE name IN (
+            'shared_buffers',
+            'effective_cache_size',
+            'work_mem',
+            'wal_buffers',
+            'gin_pending_list_limit',
+            'max_wal_size',
+            'min_wal_size',
+            'checkpoint_timeout',
+            'checkpoint_completion_target',
+            'wal_compression',
+            'random_page_cost',
+            'jit',
+            'max_connections',
+            'autovacuum_naptime',
+            'autovacuum_vacuum_scale_factor',
+            'autovacuum_analyze_scale_factor',
+            'autovacuum_vacuum_cost_limit',
+            'autovacuum_vacuum_cost_delay',
+            'fsync',
+            'full_page_writes',
+            'synchronous_commit'
+          )
+        ),
+        'index_bytes', (
+          SELECT json_object_agg(indexrelid::regclass::text, pg_relation_size(indexrelid))
+          FROM pg_index
+          WHERE indrelid = 'logs'::regclass
+        ),
+        'index_definitions', (
+          SELECT json_object_agg(indexname, indexdef ORDER BY indexname)
+          FROM pg_indexes
+          WHERE schemaname = 'public' AND tablename = 'logs'
+        ),
+        'index_options', (
+          SELECT json_object_agg(indexrelid::regclass::text, COALESCE(index_class.reloptions, ARRAY[]::text[]))
+          FROM pg_index
+          JOIN pg_class AS index_class ON index_class.oid = indexrelid
+          WHERE indrelid = 'logs'::regclass
+        ),
+        'checkpointer', (SELECT to_jsonb(checkpointer) FROM pg_stat_checkpointer AS checkpointer),
+        'wal', (SELECT to_jsonb(wal) FROM pg_stat_wal AS wal),
+        'table_activity', (
+          SELECT to_jsonb(activity)
+          FROM pg_stat_user_tables AS activity
+          WHERE relname = 'logs'
+        )
       ) FROM logs;`,
       { run_id: runId, probe_run_id: `${runId}-probe` },
     ),
@@ -479,6 +564,56 @@ async function runLoadTest() {
     durableMainLogCount,
     'accepted main logs are not durable',
   );
+  const commonPlanVariables = {
+    run_id: runId,
+    until: new Date(datasetEndMs + 1).toISOString(),
+  };
+  const filteredQueryPlanVariables = {
+    ...commonPlanVariables,
+    since: new Date(datasetEndMs - 30 * 24 * 60 * 60 * 1_000).toISOString(),
+  };
+  const aggregationPlanVariables = {
+    ...commonPlanVariables,
+    since: new Date(
+      datasetEndMs - profile.aggregationWindowHours * 60 * 60 * 1_000,
+    ).toISOString(),
+  };
+  const queryPlans = {
+    filteredQuery: JSON.parse(
+      queryDatabase(
+        `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)
+         SELECT id, event_timestamp, service, level, message, attributes
+         FROM logs
+         WHERE service = 'load-api-0'
+           AND event_timestamp >= :'since'::timestamptz
+           AND event_timestamp < :'until'::timestamptz
+           AND attributes_text @> jsonb_build_object('run_id', :'run_id')
+         ORDER BY event_timestamp DESC, id DESC
+         LIMIT 101;`,
+        filteredQueryPlanVariables,
+      ),
+    ),
+    aggregation: JSON.parse(
+      queryDatabase(
+        `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)
+         SELECT
+           date_bin(
+             INTERVAL '1 hour',
+             event_timestamp,
+             TIMESTAMPTZ '2001-01-01 00:00:00+00'
+           ) AS bucket_timestamp,
+           service AS group_value,
+           COUNT(*)::bigint AS count
+         FROM logs
+         WHERE event_timestamp >= :'since'::timestamptz
+           AND event_timestamp < :'until'::timestamptz
+           AND attributes_text @> jsonb_build_object('run_id', :'run_id')
+         GROUP BY bucket_timestamp, group_value
+         ORDER BY bucket_timestamp ASC, group_value ASC NULLS FIRST;`,
+        aggregationPlanVariables,
+      ),
+    ),
+  };
 
   const report = {
     runId,
@@ -498,7 +633,11 @@ async function runLoadTest() {
     },
     profile,
     resourceLimits,
+    stabilizationDurationMs,
     databaseEvidence,
+    databaseStatisticsBeforeMixed,
+    databaseStatisticsAfterMixed,
+    queryPlans,
     metrics: {
       seed: {
         acceptedLogs: metric(seedSummary, 'accepted_logs'),

@@ -39,7 +39,7 @@ const configSchema = z.object({
   DATABASE_URL: databaseUrlSchema.default(
     'postgresql://postgres:postgres@127.0.0.1:5432/log_service',
   ),
-  DB_POOL_MAX: integerSchema(1, 100).default(20),
+  DB_POOL_MAX: integerSchema(1, 100).default(4),
   DB_IDLE_TIMEOUT_MS: integerSchema(0, 600_000).default(30_000),
   DB_CONNECTION_TIMEOUT_MS: integerSchema(1, 120_000).default(5_000),
   RETENTION_DAYS: integerSchema(1, 3_650).default(30),

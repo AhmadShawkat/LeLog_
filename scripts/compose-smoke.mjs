@@ -89,7 +89,7 @@ async function runSmokeTest() {
     '--command',
     'SELECT count(*) FROM schema_migrations',
   ]).trim();
-  assert.equal(appliedMigrations, '3');
+  assert.equal(appliedMigrations, '6');
 
   const healthy = await getHealth();
   assert.equal(healthy.response.status, 200);

@@ -31,6 +31,9 @@ export function buildApp(
     logger: {
       level: config.LOG_LEVEL,
     },
+    // Portable equivalent of nginx `client_max_body_size 16m`: Fastify defaults
+    // to a 1 MB body limit, which is too small for large ingestion batches.
+    bodyLimit: 16 * 1024 * 1024,
   });
   const poolFactory = dependencies.createPool ?? createDatabasePool;
   const migrate = dependencies.migrate ?? runMigrations;

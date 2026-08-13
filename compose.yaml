@@ -2,7 +2,51 @@ name: log-service
 
 services:
   database:
-    image: postgres:17.7-bookworm
+    image: postgres:18-alpine
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - wal_buffers=64MB
+      - -c
+      - gin_pending_list_limit=32MB
+      - -c
+      - max_wal_size=16GB
+      - -c
+      - min_wal_size=1GB
+      - -c
+      - checkpoint_timeout=60min
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_compression=on
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - jit=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - fsync=on
+      - -c
+      - full_page_writes=on
+      - -c
+      - max_connections=30
+      - -c
+      - autovacuum_naptime=15s
+      - -c
+      - autovacuum_vacuum_scale_factor=0.05
+      - -c
+      - autovacuum_analyze_scale_factor=0.02
+      - -c
+      - autovacuum_vacuum_cost_limit=2000
+      - -c
+      - autovacuum_vacuum_cost_delay=2ms
     environment:
       POSTGRES_DB: log_service
       POSTGRES_USER: log_service
@@ -14,12 +58,15 @@ services:
       retries: 15
       start_period: 10s
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # postgres:18 images changed the data-dir layout; the volume must mount at
+      # /var/lib/postgresql (not .../data) or the container refuses to start.
+      - postgres-data:/var/lib/postgresql
     ports:
       - '127.0.0.1:${DB_PORT:-15432}:5432'
     shm_size: 128mb
     cpus: 1.0
     mem_limit: 1g
+    stop_grace_period: 30s
     restart: unless-stopped
 
   application:
@@ -32,7 +79,7 @@ services:
       PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql://log_service:log_service@database:5432/log_service
-      DB_POOL_MAX: 20
+      DB_POOL_MAX: 4
       DB_IDLE_TIMEOUT_MS: 30000
       DB_CONNECTION_TIMEOUT_MS: 5000
       RETENTION_DAYS: ${RETENTION_DAYS:-30}
@@ -63,6 +110,7 @@ services:
       - /tmp:size=64m
     cpus: 0.5
     mem_limit: 256m
+    stop_grace_period: 35s
     restart: unless-stopped
 
 volumes:

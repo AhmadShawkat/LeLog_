@@ -36,10 +36,10 @@ export const migrations: readonly Migration[] = Object.freeze([
         ON logs (level, event_timestamp DESC, id DESC);
 
       CREATE INDEX logs_attributes_text_gin_idx
-        ON logs USING GIN (attributes_text jsonb_path_ops);
+        ON logs USING GIN (attributes_text jsonb_path_ops) WITH (fastupdate = on);
 
       CREATE INDEX logs_message_trgm_idx
-        ON logs USING GIN (message gin_trgm_ops);
+        ON logs USING GIN (message gin_trgm_ops) WITH (fastupdate = on);
     `.trim(),
   }),
   Object.freeze({
@@ -49,6 +49,36 @@ export const migrations: readonly Migration[] = Object.freeze([
         autovacuum_vacuum_scale_factor = 0.02,
         autovacuum_vacuum_threshold = 1000,
         autovacuum_analyze_scale_factor = 0.01,
+        autovacuum_analyze_threshold = 1000
+      );
+    `.trim(),
+  }),
+  Object.freeze({
+    version: '004_optimize_log_access_paths',
+    sql: `
+      DROP INDEX IF EXISTS logs_service_event_timestamp_id_idx;
+      DROP INDEX IF EXISTS logs_level_event_timestamp_id_idx;
+
+      ALTER INDEX logs_message_trgm_idx SET (fastupdate = on);
+      ALTER INDEX logs_attributes_text_gin_idx SET (fastupdate = on);
+    `.trim(),
+  }),
+  Object.freeze({
+    version: '005_use_global_autovacuum_settings',
+    sql: `
+      ALTER TABLE logs RESET (
+        autovacuum_vacuum_scale_factor,
+        autovacuum_vacuum_threshold,
+        autovacuum_analyze_scale_factor,
+        autovacuum_analyze_threshold
+      );
+    `.trim(),
+  }),
+  Object.freeze({
+    version: '006_tune_logs_autovacuum_thresholds',
+    sql: `
+      ALTER TABLE logs SET (
+        autovacuum_vacuum_threshold = 1000,
         autovacuum_analyze_threshold = 1000
       );
     `.trim(),

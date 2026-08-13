@@ -6,7 +6,7 @@ import {
 
 describe('deleteExpiredLogBatch', () => {
   it('deletes one parameterized, ordered, non-blocking batch', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 250 });
+    const query = vi.fn().mockResolvedValue({ rows: [{ deleted: 250 }] });
 
     await expect(
       deleteExpiredLogBatch({ query } as never, 30, 5_000),
@@ -15,18 +15,20 @@ describe('deleteExpiredLogBatch', () => {
     expect(query).toHaveBeenCalledWith({
       name: 'delete-expired-logs-v1',
       text: DELETE_EXPIRED_LOGS_QUERY,
-      values: [30, 5_000],
+      values: [30, 5_000, 891_247_331],
     });
     expect(DELETE_EXPIRED_LOGS_QUERY).toMatch(
       /ORDER BY event_timestamp ASC, id ASC/,
     );
     expect(DELETE_EXPIRED_LOGS_QUERY).toContain('LIMIT $2');
     expect(DELETE_EXPIRED_LOGS_QUERY).toContain('FOR UPDATE SKIP LOCKED');
+    expect(DELETE_EXPIRED_LOGS_QUERY).toContain('pg_try_advisory_lock($3)');
+    expect(DELETE_EXPIRED_LOGS_QUERY).toContain('pg_advisory_unlock($3)');
     expect(DELETE_EXPIRED_LOGS_QUERY).not.toContain('30');
   });
 
-  it('treats a missing row count as zero', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: null });
+  it('treats a missing deleted count as zero', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{}] });
 
     await expect(
       deleteExpiredLogBatch({ query } as never, 7, 100),

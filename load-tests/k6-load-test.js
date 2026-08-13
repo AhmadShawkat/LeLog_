@@ -18,6 +18,9 @@ const mixedBatchRate = positiveIntegerEnvironment('MIXED_BATCH_RATE');
 const mixedDurationSeconds = positiveIntegerEnvironment(
   'MIXED_DURATION_SECONDS',
 );
+const aggregationWindowHours = positiveIntegerEnvironment(
+  'AGGREGATION_WINDOW_HOURS',
+);
 const seedVus = positiveIntegerEnvironment('SEED_VUS');
 const maximumIngestionVus = positiveIntegerEnvironment('MAXIMUM_INGESTION_VUS');
 const summaryPath = requiredEnvironment('SUMMARY_PATH');
@@ -241,7 +244,9 @@ export function filteredQuery() {
 
 export function aggregate() {
   const parameters = queryString({
-    since: new Date(datasetStartMs).toISOString(),
+    since: new Date(
+      datasetEndMs - aggregationWindowHours * 60 * 60 * 1_000,
+    ).toISOString(),
     until: new Date(datasetEndMs + 1).toISOString(),
     bucket: '1h',
     group_by: 'service',

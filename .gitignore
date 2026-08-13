@@ -37,3 +37,6 @@ Thumbs.db
 /AGENTS.md
 /plan.md
 /readplan.md
+
+# Markdown (notes, docs, transcripts — kept local)
+*.md

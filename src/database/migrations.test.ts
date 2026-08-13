@@ -9,6 +9,9 @@ describe('migrations', () => {
       '001_create_logs',
       '002_create_log_indexes',
       '003_tune_logs_autovacuum',
+      '004_optimize_log_access_paths',
+      '005_use_global_autovacuum_settings',
+      '006_tune_logs_autovacuum_thresholds',
     ]);
     expect(new Set(versions).size).toBe(versions.length);
   });
@@ -36,8 +39,12 @@ describe('migrations', () => {
     expect(indexes).toMatch(/\(event_timestamp DESC, id DESC\)/);
     expect(indexes).toMatch(/\(service, event_timestamp DESC, id DESC\)/);
     expect(indexes).toMatch(/\(level, event_timestamp DESC, id DESC\)/);
-    expect(indexes).toMatch(/GIN \(attributes_text jsonb_path_ops\)/);
-    expect(indexes).toMatch(/GIN \(message gin_trgm_ops\)/);
+    expect(indexes).toMatch(
+      /GIN \(attributes_text jsonb_path_ops\) WITH \(fastupdate = on\)/,
+    );
+    expect(indexes).toMatch(
+      /GIN \(message gin_trgm_ops\) WITH \(fastupdate = on\)/,
+    );
   });
 
   it('vacuum analyzes retained logs before dead tuples accumulate excessively', () => {
@@ -47,5 +54,43 @@ describe('migrations', () => {
     expect(settings).toMatch(/autovacuum_vacuum_threshold = 1000/);
     expect(settings).toMatch(/autovacuum_analyze_scale_factor = 0\.01/);
     expect(settings).toMatch(/autovacuum_analyze_threshold = 1000/);
+  });
+
+  it('keeps lean access paths and batched GIN index maintenance', () => {
+    const optimization = migrations[3]?.sql ?? '';
+
+    expect(optimization).toMatch(
+      /DROP INDEX IF EXISTS logs_service_event_timestamp_id_idx/,
+    );
+    expect(optimization).toMatch(
+      /DROP INDEX IF EXISTS logs_level_event_timestamp_id_idx/,
+    );
+    expect(optimization).toMatch(
+      /ALTER INDEX logs_message_trgm_idx SET \(fastupdate = on\)/,
+    );
+    expect(optimization).toMatch(
+      /ALTER INDEX logs_attributes_text_gin_idx SET \(fastupdate = on\)/,
+    );
+    expect(optimization).not.toMatch(/DROP INDEX logs_event_timestamp_id_idx/);
+    expect(optimization).not.toMatch(/CREATE INDEX/);
+    expect(optimization).not.toMatch(/ALTER TABLE logs/);
+  });
+
+  it('removes table overrides so global autovacuum tuning takes effect', () => {
+    const autovacuum = migrations[4]?.sql ?? '';
+
+    expect(autovacuum).toMatch(/ALTER TABLE logs RESET/);
+    expect(autovacuum).toMatch(/autovacuum_vacuum_scale_factor/);
+    expect(autovacuum).toMatch(/autovacuum_analyze_scale_factor/);
+  });
+
+  it('restores table-level autovacuum thresholds for high-churn retention', () => {
+    const thresholds = migrations[5]?.sql ?? '';
+
+    expect(thresholds).toMatch(/ALTER TABLE logs SET/);
+    expect(thresholds).toMatch(/autovacuum_vacuum_threshold = 1000/);
+    expect(thresholds).toMatch(/autovacuum_analyze_threshold = 1000/);
+    expect(thresholds).not.toMatch(/autovacuum_vacuum_scale_factor/);
+    expect(thresholds).not.toMatch(/autovacuum_analyze_scale_factor/);
   });
 });
