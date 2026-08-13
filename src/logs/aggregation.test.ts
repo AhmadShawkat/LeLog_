@@ -30,12 +30,12 @@ describe('aggregateLogs', () => {
     ).resolves.toEqual({
       buckets: [
         {
-          timestamp: '2026-08-01T00:00:00.000Z',
+          start: '2026-08-01T00:00:00.000Z',
           count: 3,
           group: 'api',
         },
         {
-          timestamp: '2026-08-01T00:05:00.000Z',
+          start: '2026-08-01T00:05:00.000Z',
           count: 2,
           group: 'worker',
         },

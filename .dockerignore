@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 load-results
+/Rushdi_test.js
 .git
 .gitignore
 .gitattributes

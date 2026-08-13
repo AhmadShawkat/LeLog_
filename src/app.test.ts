@@ -25,16 +25,19 @@ function testDependencies(): {
   end: ReturnType<typeof vi.spyOn>;
   startRetention: ReturnType<typeof vi.fn>;
   stopRetention: ReturnType<typeof vi.fn>;
+  closeLogWriter: ReturnType<typeof vi.fn>;
 } {
   const pool = new Pool();
   const end = vi.spyOn(pool, 'end').mockResolvedValue(undefined);
   const migrate = vi.fn().mockResolvedValue(undefined);
   const startRetention = vi.fn();
   const stopRetention = vi.fn().mockResolvedValue(undefined);
+  const closeLogWriter = vi.fn().mockResolvedValue(undefined);
 
   return {
     dependencies: {
       createPool: () => pool,
+      createLogWriter: () => ({ write: vi.fn(), close: closeLogWriter }),
       migrate,
       createRetention: () => ({
         start: startRetention,
@@ -46,6 +49,7 @@ function testDependencies(): {
     end,
     startRetention,
     stopRetention,
+    closeLogWriter,
   };
 }
 
@@ -70,8 +74,15 @@ describe('buildApp', () => {
   });
 
   it('owns one pool, migrates before readiness, and closes the pool', async () => {
-    const { dependencies, pool, migrate, end, startRetention, stopRetention } =
-      testDependencies();
+    const {
+      dependencies,
+      pool,
+      migrate,
+      end,
+      startRetention,
+      stopRetention,
+      closeLogWriter,
+    } = testDependencies();
     const app = buildApp(silentConfig, dependencies);
 
     expect(app.db).toBe(pool);
@@ -83,8 +94,12 @@ describe('buildApp', () => {
 
     await app.close();
     expect(stopRetention).toHaveBeenCalledOnce();
+    expect(closeLogWriter).toHaveBeenCalledOnce();
     expect(end).toHaveBeenCalledOnce();
     expect(stopRetention.mock.invocationCallOrder[0]).toBeLessThan(
+      end.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(closeLogWriter.mock.invocationCallOrder[0]).toBeLessThan(
       end.mock.invocationCallOrder[0] ?? 0,
     );
   });

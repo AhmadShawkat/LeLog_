@@ -38,5 +38,9 @@ Thumbs.db
 /plan.md
 /readplan.md
 
+# Local benchmark experiments
+/Rushdi_test.js
+
 # Markdown (notes, docs, transcripts — kept local)
 *.md
+!README.md

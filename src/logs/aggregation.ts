@@ -9,7 +9,7 @@ interface AggregationRow extends QueryResultRow {
 }
 
 export interface AggregationBucketResult {
-  timestamp: string;
+  start: string;
   count: number;
   group: string | null;
 }
@@ -23,7 +23,7 @@ export async function aggregateLogs(
 
   return {
     buckets: result.rows.map((row) => ({
-      timestamp:
+      start:
         row.bucket_timestamp instanceof Date
           ? row.bucket_timestamp.toISOString()
           : new Date(row.bucket_timestamp).toISOString(),

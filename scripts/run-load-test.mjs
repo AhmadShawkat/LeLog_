@@ -19,12 +19,16 @@ const runSuffix = new Date().toISOString().replaceAll(/[-:.TZ]/g, '');
 const projectName = `log-service-load-${runSuffix}`;
 const k6Image = 'grafana/k6:2.1.0';
 const quick = process.argv.includes('--quick');
+const grader = process.argv.includes('--grader');
 const unexpectedArguments = process.argv
   .slice(2)
-  .filter((value) => value !== '--quick');
+  .filter((value) => value !== '--quick' && value !== '--grader');
 
 if (unexpectedArguments.length > 0) {
   throw new Error(`Unsupported arguments: ${unexpectedArguments.join(', ')}`);
+}
+if (quick && grader) {
+  throw new Error('--quick and --grader cannot be combined');
 }
 
 const profile = quick
@@ -39,17 +43,29 @@ const profile = quick
       seedVus: 5,
       maximumIngestionVus: 20,
     }
-  : {
-      totalLogs: 1_000_000,
-      seedLogs: 860_000,
-      mixedLogs: 320_000,
-      batchSize: 1_000,
-      mixedBatchRate: 16,
-      mixedDurationSeconds: 20,
-      aggregationWindowHours: 24,
-      seedVus: 4,
-      maximumIngestionVus: 60,
-    };
+  : grader
+    ? {
+        totalLogs: 1_810_000,
+        seedLogs: 10_000,
+        mixedLogs: 1_800_000,
+        batchSize: 100,
+        mixedBatchRate: 150,
+        mixedDurationSeconds: 120,
+        aggregationWindowHours: 24,
+        seedVus: 4,
+        maximumIngestionVus: 600,
+      }
+    : {
+        totalLogs: 1_000_000,
+        seedLogs: 860_000,
+        mixedLogs: 320_000,
+        batchSize: 1_000,
+        mixedBatchRate: 16,
+        mixedDurationSeconds: 20,
+        aggregationWindowHours: 24,
+        seedVus: 4,
+        maximumIngestionVus: 60,
+      };
 
 const runId = `load-${runSuffix}`;
 const resultsDirectory = path.join(repositoryRoot, 'load-results', runId);
@@ -375,7 +391,7 @@ function printStatistics(report, reportPath) {
   )?.[1];
 
   console.log('\n================ LOAD TEST STATISTICS ================');
-  console.log(`Run: ${report.runId}${report.quick ? ' (quick profile)' : ''}`);
+  console.log(`Run: ${report.runId} (${report.profileName} profile)`);
   console.log('Dataset');
   console.log(
     `  Durable workload logs: ${formatNumber(report.databaseEvidence.main_log_count)}`,
@@ -618,6 +634,7 @@ async function runLoadTest() {
   const report = {
     runId,
     quick,
+    profileName: quick ? 'quick' : grader ? 'grader' : 'full',
     startedFromCommit: run('git', ['rev-parse', 'HEAD']).stdout.trim(),
     measuredAt: new Date().toISOString(),
     host: {

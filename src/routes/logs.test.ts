@@ -2,7 +2,6 @@ import { Pool } from 'pg';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.js';
 import type { AppConfig } from '../config.js';
-import { INSERT_LOG_BATCH_QUERY } from '../logs/repository.js';
 
 const config: AppConfig = {
   HOST: '127.0.0.1',
@@ -30,14 +29,16 @@ function logsApp() {
   const query = vi
     .spyOn(pool, 'query')
     .mockResolvedValue({ rowCount: 1, rows: [] } as never);
+  const write = vi.fn().mockResolvedValue(undefined);
   const app = buildApp(config, {
     createPool: () => pool,
+    createLogWriter: () => ({ write, close: vi.fn() }),
     migrate: vi.fn().mockResolvedValue(undefined),
     createRetention: () => ({ start: vi.fn(), stop: vi.fn() }),
   });
   apps.push(app);
 
-  return { app, query };
+  return { app, query, write };
 }
 
 function validEntry(overrides: Record<string, unknown> = {}) {
@@ -52,7 +53,7 @@ function validEntry(overrides: Record<string, unknown> = {}) {
 
 describe('POST /logs', () => {
   it('durably inserts a valid batch before reporting it accepted', async () => {
-    const { app, query } = logsApp();
+    const { app, write } = logsApp();
 
     const response = await app.inject({
       method: 'POST',
@@ -64,15 +65,12 @@ describe('POST /logs', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ accepted: 2, rejected: [] });
-    expect(query).toHaveBeenCalledOnce();
-    expect(query.mock.calls[0]?.[0]).toMatchObject({
-      name: 'insert-log-batch-v1',
-      text: INSERT_LOG_BATCH_QUERY,
-    });
+    expect(write).toHaveBeenCalledOnce();
+    expect(write.mock.calls[0]?.[0]).toHaveLength(2);
   });
 
   it('partially accepts a batch and preserves rejected array indexes', async () => {
-    const { app, query } = logsApp();
+    const { app, write } = logsApp();
 
     const response = await app.inject({
       method: 'POST',
@@ -93,11 +91,12 @@ describe('POST /logs', () => {
         { index: 2, reason: 'entry must be an object' },
       ],
     });
-    expect(query).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledOnce();
+    expect(write.mock.calls[0]?.[0]).toHaveLength(1);
   });
 
   it('returns 400 and does not write when every entry is rejected', async () => {
-    const { app, query } = logsApp();
+    const { app, write } = logsApp();
 
     const response = await app.inject({
       method: 'POST',
@@ -110,13 +109,13 @@ describe('POST /logs', () => {
       accepted: 0,
       rejected: [{ index: 0, reason: 'message must be a non-empty string' }],
     });
-    expect(query).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   it.each([{}, [], { logs: [] }, { logs: [validEntry()], extra: true }])(
     'returns 400 for an invalid top-level body',
     async (payload) => {
-      const { app, query } = logsApp();
+      const { app, write } = logsApp();
 
       const response = await app.inject({
         method: 'POST',
@@ -128,12 +127,12 @@ describe('POST /logs', () => {
       expect(response.json()).toEqual({
         error: 'Body must contain only a non-empty logs array',
       });
-      expect(query).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
     },
   );
 
   it('returns a stable 400 response for malformed JSON', async () => {
-    const { app, query } = logsApp();
+    const { app, write } = logsApp();
 
     const response = await app.inject({
       method: 'POST',
@@ -144,12 +143,12 @@ describe('POST /logs', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({ error: 'Malformed JSON body' });
-    expect(query).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('does not report acceptance when the durable insert fails', async () => {
-    const { app, query } = logsApp();
-    query.mockRejectedValueOnce(new Error('database unavailable'));
+    const { app, write } = logsApp();
+    write.mockRejectedValueOnce(new Error('database unavailable'));
 
     const response = await app.inject({
       method: 'POST',
@@ -263,12 +262,12 @@ describe('GET /logs/aggregate', () => {
     expect(response.json()).toEqual({
       buckets: [
         {
-          timestamp: '2026-08-11T12:00:00.000Z',
+          start: '2026-08-11T12:00:00.000Z',
           count: 4,
           group: 'api',
         },
         {
-          timestamp: '2026-08-11T12:05:00.000Z',
+          start: '2026-08-11T12:05:00.000Z',
           count: 2,
           group: 'api',
         },
@@ -305,7 +304,7 @@ describe('GET /logs/aggregate', () => {
     expect(response.json()).toEqual({
       buckets: [
         {
-          timestamp: '2026-08-11T12:00:00.000Z',
+          start: '2026-08-11T12:00:00.000Z',
           count: 1,
           group: null,
         },

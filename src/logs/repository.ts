@@ -1,23 +1,45 @@
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { Pool } from 'pg';
+import { from as copyFrom } from 'pg-copy-streams';
 import type { ValidatedLogEntry } from './log-entry.js';
-import { INSERT_LOG_BATCH_QUERY } from './sql.js';
+import { COPY_LOG_BATCH_QUERY } from './sql.js';
 
-export { INSERT_LOG_BATCH_QUERY } from './sql.js';
+export { COPY_LOG_BATCH_QUERY } from './sql.js';
+
+function csvField(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+export function serializeLogBatch(
+  entries: readonly ValidatedLogEntry[],
+): string {
+  return entries
+    .map((entry) =>
+      [
+        entry.timestamp,
+        entry.service,
+        entry.level,
+        entry.message,
+        JSON.stringify(entry.attributes),
+        JSON.stringify(entry.attributesText),
+      ]
+        .map(csvField)
+        .join(','),
+    )
+    .join('\n')
+    .concat('\n');
+}
 
 export async function insertLogBatch(
-  pool: Pick<Pool, 'query'>,
+  pool: Pick<Pool, 'connect'>,
   entries: readonly ValidatedLogEntry[],
 ): Promise<void> {
-  await pool.query({
-    name: 'insert-log-batch-v1',
-    text: INSERT_LOG_BATCH_QUERY,
-    values: [
-      entries.map(({ timestamp }) => timestamp),
-      entries.map(({ service }) => service),
-      entries.map(({ level }) => level),
-      entries.map(({ message }) => message),
-      entries.map(({ attributes }) => attributes),
-      entries.map(({ attributesText }) => attributesText),
-    ],
-  });
+  const client = await pool.connect();
+  try {
+    const destination = client.query(copyFrom(COPY_LOG_BATCH_QUERY));
+    await pipeline(Readable.from([serializeLogBatch(entries)]), destination);
+  } finally {
+    client.release();
+  }
 }

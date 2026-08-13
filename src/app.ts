@@ -5,6 +5,11 @@ import type { AppConfig } from './config.js';
 import { runMigrations } from './database/migration-runner.js';
 import { createDatabasePool, type PoolFactory } from './database/pool.js';
 import {
+  createLogBatchWriter,
+  type LogBatchWriter,
+  type LogBatchWriterFactory,
+} from './logs/batch-writer.js';
+import {
   createRetentionWorker,
   type RetentionWorkerFactory,
 } from './retention/worker.js';
@@ -14,11 +19,13 @@ import { registerLogRoutes } from './routes/logs.js';
 declare module 'fastify' {
   interface FastifyInstance {
     db: Pool;
+    logWriter: LogBatchWriter;
   }
 }
 
 export interface AppDependencies {
   createPool: PoolFactory;
+  createLogWriter: LogBatchWriterFactory;
   migrate(pool: Pool): Promise<void>;
   createRetention: RetentionWorkerFactory;
 }
@@ -38,6 +45,8 @@ export function buildApp(
   const poolFactory = dependencies.createPool ?? createDatabasePool;
   const migrate = dependencies.migrate ?? runMigrations;
   const pool = poolFactory(config);
+  const logWriterFactory = dependencies.createLogWriter ?? createLogBatchWriter;
+  const logWriter = logWriterFactory(pool);
   const retentionFactory =
     dependencies.createRetention ?? createRetentionWorker;
   const retention = retentionFactory(pool, config, app.log);
@@ -64,6 +73,7 @@ export function buildApp(
   });
 
   app.decorate('db', pool);
+  app.decorate('logWriter', logWriter);
   pool.on('error', (error) => {
     app.log.error({ err: error }, 'Unexpected error from idle database client');
   });
@@ -75,6 +85,7 @@ export function buildApp(
   });
   app.addHook('onClose', async () => {
     await retention.stop();
+    await logWriter.close();
     await pool.end();
   });
 

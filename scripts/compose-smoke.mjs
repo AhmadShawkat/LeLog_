@@ -212,7 +212,7 @@ async function runSmokeTest() {
   assert.deepEqual(aggregation.body, {
     buckets: [
       {
-        timestamp: isoTimestamp(bucketStart),
+        start: isoTimestamp(bucketStart),
         count: 2,
         group: 'info',
       },

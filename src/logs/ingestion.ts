@@ -1,6 +1,5 @@
-import type { Pool } from 'pg';
 import type { RejectedLogEntry } from './log-entry.js';
-import { insertLogBatch } from './repository.js';
+import type { LogBatchWriter } from './batch-writer.js';
 import { validateLogBatch } from './validation.js';
 
 export interface LogIngestionResult {
@@ -9,14 +8,14 @@ export interface LogIngestionResult {
 }
 
 export async function ingestLogBatch(
-  pool: Pick<Pool, 'query'>,
+  writer: Pick<LogBatchWriter, 'write'>,
   body: unknown,
 ): Promise<LogIngestionResult | undefined> {
   const validation = validateLogBatch(body);
   if (!validation) return undefined;
 
   if (validation.accepted.length > 0) {
-    await insertLogBatch(pool, validation.accepted);
+    await writer.write(validation.accepted);
   }
 
   return {

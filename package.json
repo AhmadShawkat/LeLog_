@@ -23,6 +23,7 @@
     "test": "vitest run",
     "test:compose": "node scripts/compose-smoke.mjs",
     "test:load": "node scripts/run-load-test.mjs",
+    "test:load:grader": "node scripts/run-load-test.mjs --grader",
     "test:load:quick": "node scripts/run-load-test.mjs --quick",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -31,6 +32,7 @@
     "@fastify/static": "10.1.3",
     "fastify": "5.11.3",
     "pg": "8.23.0",
+    "pg-copy-streams": "7.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "4.4.3"
@@ -39,6 +41,7 @@
     "@eslint/js": "10.0.1",
     "@types/node": "26.2.0",
     "@types/pg": "8.21.0",
+    "@types/pg-copy-streams": "1.2.5",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",

@@ -3,7 +3,13 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', 'dist/**', 'coverage/**', 'eslint.config.js'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'coverage/**',
+      'eslint.config.js',
+      'Rushdi_test.js',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -25,7 +25,7 @@ export function registerLogRoutes(app: FastifyInstance): void {
   });
 
   app.post('/logs', async (request, reply) => {
-    const result = await ingestLogBatch(app.db, request.body);
+    const result = await ingestLogBatch(app.logWriter, request.body);
 
     if (!result) {
       return reply
