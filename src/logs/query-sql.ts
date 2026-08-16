@@ -1,4 +1,5 @@
 import type { LogQueryFilters } from './query-validation.js';
+import { serializeHstorePairs } from './hstore.js';
 
 export interface BuiltLogQuery {
   text: string;
@@ -43,7 +44,7 @@ export function buildLogFilterWhere(
   }
   if (filters.attributes.length > 0) {
     conditions.push(
-      `attributes_text @> ${parameter(JSON.stringify(Object.fromEntries(filters.attributes.map(({ key, value }) => [key, value]))))}::jsonb`,
+      `attributes_text @> ${parameter(serializeHstorePairs(filters.attributes.map(({ key, value }) => [key, value] as const)))}::hstore`,
     );
   }
   if (filters.q !== undefined) {

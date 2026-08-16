@@ -28,8 +28,8 @@ const entries = [
 describe('insertLogBatch', () => {
   it('serializes every value as a quoted CSV field', () => {
     expect(serializeLogBatch(entries)).toBe(
-      '"2026-08-11T11:00:00.000Z","api,""primary""","info","one\nnext line","{""attempt"":1,""label"":""a,b""}","{""attempt"":""1"",""label"":""a,b""}"\n' +
-        '"2026-08-11T11:00:01.000Z","worker","error","two","{}","{}"\n',
+      '"2026-08-11T11:00:00.000Z","api,""primary""","info","one\nnext line","{""attempt"":1,""label"":""a,b""}","""attempt""=>""1"",""label""=>""a,b"""\n' +
+        '"2026-08-11T11:00:01.000Z","worker","error","two","{}",""\n',
     );
   });
 

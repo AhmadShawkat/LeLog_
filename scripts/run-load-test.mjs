@@ -74,7 +74,7 @@ const composeEnvironment = {
   APP_PORT: '0',
   DB_PORT: '0',
   LOG_LEVEL: 'warn',
-  RETENTION_DAYS: '31',
+  RETENTION_DAYS: '90',
   RETENTION_INTERVAL_MS: '86400000',
 };
 const resourceSamples = [];
@@ -487,7 +487,7 @@ async function runLoadTest() {
   assertRateIsOne(seedSummary, 'ingestion_success');
   const seedCount = Number(
     queryDatabase(
-      "SELECT COUNT(*) FROM logs WHERE attributes_text ->> 'run_id' = :'run_id';",
+      "SELECT COUNT(*) FROM logs WHERE attributes_text -> 'run_id' = :'run_id';",
       { run_id: runId },
     ),
   );
@@ -510,10 +510,10 @@ async function runLoadTest() {
   const databaseEvidence = JSON.parse(
     queryDatabase(
       `SELECT json_build_object(
-        'main_log_count', COUNT(*) FILTER (WHERE attributes_text ->> 'run_id' = :'run_id'),
-        'probe_log_count', COUNT(*) FILTER (WHERE attributes_text ->> 'run_id' = :'probe_run_id'),
-        'minimum_timestamp', MIN(event_timestamp) FILTER (WHERE attributes_text ->> 'run_id' = :'run_id'),
-        'maximum_timestamp', MAX(event_timestamp) FILTER (WHERE attributes_text ->> 'run_id' = :'run_id'),
+        'main_log_count', COUNT(*) FILTER (WHERE attributes_text -> 'run_id' = :'run_id'),
+        'probe_log_count', COUNT(*) FILTER (WHERE attributes_text -> 'run_id' = :'probe_run_id'),
+        'minimum_timestamp', MIN(event_timestamp) FILTER (WHERE attributes_text -> 'run_id' = :'run_id'),
+        'maximum_timestamp', MAX(event_timestamp) FILTER (WHERE attributes_text -> 'run_id' = :'run_id'),
         'database_bytes', pg_database_size(current_database()),
         'logs_table_bytes', pg_total_relation_size('logs'),
         'logs_heap_bytes', pg_relation_size('logs'),
@@ -603,7 +603,7 @@ async function runLoadTest() {
          WHERE service = 'load-api-0'
            AND event_timestamp >= :'since'::timestamptz
            AND event_timestamp < :'until'::timestamptz
-           AND attributes_text @> jsonb_build_object('run_id', :'run_id')
+           AND attributes_text @> hstore('run_id', :'run_id')
          ORDER BY event_timestamp DESC, id DESC
          LIMIT 101;`,
         filteredQueryPlanVariables,
@@ -623,7 +623,7 @@ async function runLoadTest() {
          FROM logs
          WHERE event_timestamp >= :'since'::timestamptz
            AND event_timestamp < :'until'::timestamptz
-           AND attributes_text @> jsonb_build_object('run_id', :'run_id')
+           AND attributes_text @> hstore('run_id', :'run_id')
          GROUP BY bucket_timestamp, group_value
          ORDER BY bucket_timestamp ASC, group_value ASC NULLS FIRST;`,
         aggregationPlanVariables,

@@ -83,4 +83,46 @@ export const migrations: readonly Migration[] = Object.freeze([
       );
     `.trim(),
   }),
+  Object.freeze({
+    version: '007_convert_attribute_lookup_to_hstore',
+    sql: `
+      CREATE EXTENSION IF NOT EXISTS hstore;
+
+      DROP INDEX IF EXISTS logs_attributes_text_gin_idx;
+
+      ALTER TABLE logs
+        ADD COLUMN attributes_text_hstore HSTORE NOT NULL DEFAULT ''::hstore;
+
+      UPDATE logs AS target
+      SET attributes_text_hstore = converted.attributes_text
+      FROM (
+        SELECT
+          source.id,
+          hstore(
+            array_agg(attribute.key ORDER BY attribute.key),
+            array_agg(attribute.value ORDER BY attribute.key)
+          ) AS attributes_text
+        FROM logs AS source
+        CROSS JOIN LATERAL jsonb_each_text(source.attributes_text) AS attribute
+        GROUP BY source.id
+      ) AS converted
+      WHERE target.id = converted.id;
+
+      ALTER TABLE logs DROP CONSTRAINT logs_attributes_text_object;
+      ALTER TABLE logs DROP COLUMN attributes_text;
+      ALTER TABLE logs RENAME COLUMN attributes_text_hstore TO attributes_text;
+
+      CREATE INDEX logs_attributes_text_gin_idx
+        ON logs USING GIN (attributes_text) WITH (fastupdate = on);
+    `.trim(),
+  }),
+  Object.freeze({
+    version: '008_bound_hstore_gin_pending_list',
+    sql: `
+      ALTER INDEX logs_attributes_text_gin_idx SET (
+        fastupdate = on,
+        gin_pending_list_limit = 4096
+      );
+    `.trim(),
+  }),
 ]);

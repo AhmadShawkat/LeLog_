@@ -2,6 +2,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Pool } from 'pg';
 import { from as copyFrom } from 'pg-copy-streams';
+import { serializeHstoreRecord } from './hstore.js';
 import type { ValidatedLogEntry } from './log-entry.js';
 import { COPY_LOG_BATCH_QUERY } from './sql.js';
 
@@ -22,7 +23,7 @@ export function serializeLogBatch(
         entry.level,
         entry.message,
         JSON.stringify(entry.attributes),
-        JSON.stringify(entry.attributesText),
+        serializeHstoreRecord(entry.attributesText),
       ]
         .map(csvField)
         .join(','),

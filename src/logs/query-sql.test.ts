@@ -18,7 +18,7 @@ describe('buildLogQuery', () => {
     expect(query.text).toContain('level = $2');
     expect(query.text).toContain('event_timestamp >= $3::timestamptz');
     expect(query.text).toContain('event_timestamp < $4::timestamptz');
-    expect(query.text).toContain('attributes_text @> $5::jsonb');
+    expect(query.text).toContain('attributes_text @> $5::hstore');
     expect(query.text).toContain("message ILIKE '%' || $6 || '%' ESCAPE '\\'");
     expect(query.text).toContain(
       '(event_timestamp, id) < ($7::timestamptz, $8::bigint)',
@@ -31,7 +31,7 @@ describe('buildLogQuery', () => {
       'error',
       '2026-08-01T00:00:00Z',
       '2026-09-01T00:00:00Z',
-      JSON.stringify({ region: "west' OR true --" }),
+      '"region"=>"west\' OR true --"',
       '100\\%\\_done\\\\now',
       '2026-08-15T00:00:00Z',
       '42',

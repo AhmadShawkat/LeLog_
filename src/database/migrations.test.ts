@@ -12,6 +12,8 @@ describe('migrations', () => {
       '004_optimize_log_access_paths',
       '005_use_global_autovacuum_settings',
       '006_tune_logs_autovacuum_thresholds',
+      '007_convert_attribute_lookup_to_hstore',
+      '008_bound_hstore_gin_pending_list',
     ]);
     expect(new Set(versions).size).toBe(versions.length);
   });
@@ -92,5 +94,28 @@ describe('migrations', () => {
     expect(thresholds).toMatch(/autovacuum_analyze_threshold = 1000/);
     expect(thresholds).not.toMatch(/autovacuum_vacuum_scale_factor/);
     expect(thresholds).not.toMatch(/autovacuum_analyze_scale_factor/);
+  });
+
+  it('converts the normalized lookup column to indexed Hstore', () => {
+    const hstore = migrations[6]?.sql ?? '';
+
+    expect(hstore).toMatch(/CREATE EXTENSION IF NOT EXISTS hstore/);
+    expect(hstore).toMatch(/ADD COLUMN attributes_text_hstore HSTORE/);
+    expect(hstore).toMatch(/jsonb_each_text\(source\.attributes_text\)/);
+    expect(hstore).toMatch(/DROP CONSTRAINT logs_attributes_text_object/);
+    expect(hstore).toMatch(
+      /RENAME COLUMN attributes_text_hstore TO attributes_text/,
+    );
+    expect(hstore).toMatch(/GIN \(attributes_text\) WITH \(fastupdate = on\)/);
+    expect(hstore).not.toMatch(/DROP COLUMN attributes;/);
+  });
+
+  it('bounds only the Hstore GIN pending list', () => {
+    const pendingList = migrations[7]?.sql ?? '';
+
+    expect(pendingList).toMatch(/ALTER INDEX logs_attributes_text_gin_idx SET/);
+    expect(pendingList).toMatch(/fastupdate = on/);
+    expect(pendingList).toMatch(/gin_pending_list_limit = 4096/);
+    expect(pendingList).not.toMatch(/logs_message_trgm_idx/);
   });
 });

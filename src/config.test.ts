@@ -14,7 +14,7 @@ describe('loadConfig', () => {
       DB_POOL_MAX: 4,
       DB_IDLE_TIMEOUT_MS: 30_000,
       DB_CONNECTION_TIMEOUT_MS: 5_000,
-      RETENTION_DAYS: 30,
+      RETENTION_DAYS: 90,
       RETENTION_INTERVAL_MS: 60_000,
       RETENTION_BATCH_SIZE: 5_000,
       RETENTION_MAX_BATCHES_PER_RUN: 10,
@@ -64,6 +64,12 @@ describe('loadConfig', () => {
 
   it('rejects an invalid NODE_ENV', () => {
     expect(() => loadConfig({ NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
+  });
+
+  it('rejects retention shorter than 90 days in production', () => {
+    expect(() =>
+      loadConfig({ NODE_ENV: 'production', RETENTION_DAYS: '89' }),
+    ).toThrow(/RETENTION_DAYS: must be at least 90 in production/);
   });
 
   it('rejects an invalid LOG_LEVEL', () => {

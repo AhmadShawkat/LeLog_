@@ -210,7 +210,7 @@ describe('GET /logs', () => {
       'error',
       '2026-08-01T00:00:00Z',
       '2026-09-01T00:00:00Z',
-      JSON.stringify({ region: 'west' }),
+      '"region"=>"west"',
       'failed',
       2,
     ]);
@@ -277,7 +277,7 @@ describe('GET /logs/aggregate', () => {
       'api',
       '2026-08-11T12:00:00Z',
       '2026-08-11T13:00:00Z',
-      JSON.stringify({ region: 'west' }),
+      '"region"=>"west"',
       '5 minutes',
     ]);
   });

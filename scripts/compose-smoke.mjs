@@ -89,7 +89,34 @@ async function runSmokeTest() {
     '--command',
     'SELECT count(*) FROM schema_migrations',
   ]).trim();
-  assert.equal(appliedMigrations, '6');
+  assert.equal(appliedMigrations, '8');
+
+  const hstoreSchema = runCompose([
+    'exec',
+    '--no-TTY',
+    'database',
+    'psql',
+    '--username',
+    'log_service',
+    '--dbname',
+    'log_service',
+    '--tuples-only',
+    '--no-align',
+    '--field-separator',
+    '|',
+    '--command',
+    `SELECT
+       format_type(attribute.atttypid, attribute.atttypmod),
+       EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hstore'),
+       'fastupdate=on' = ANY(index.reloptions),
+       'gin_pending_list_limit=4096' = ANY(index.reloptions)
+     FROM pg_attribute AS attribute
+     CROSS JOIN pg_class AS index
+     WHERE attribute.attrelid = 'logs'::regclass
+       AND attribute.attname = 'attributes_text'
+       AND index.oid = 'logs_attributes_text_gin_idx'::regclass`,
+  ]).trim();
+  assert.equal(hstoreSchema, 'hstore|t|t|t');
 
   const healthy = await getHealth();
   assert.equal(healthy.response.status, 200);
@@ -159,7 +186,7 @@ async function runSmokeTest() {
     '--field-separator',
     '|',
     '--command',
-    "SELECT service, attributes->>'attempt', attributes_text->>'attempt', attributes_text->>'cached' FROM logs WHERE service = 'compose-smoke' ORDER BY event_timestamp",
+    "SELECT service, attributes->>'attempt', attributes_text->'attempt', attributes_text->'cached' FROM logs WHERE service = 'compose-smoke' ORDER BY event_timestamp",
   ]).trim();
   assert.equal(storedLog, 'compose-smoke|1|1|false\ncompose-smoke|2|2|true');
 
