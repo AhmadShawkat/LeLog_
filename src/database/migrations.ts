@@ -125,4 +125,10 @@ export const migrations: readonly Migration[] = Object.freeze([
       );
     `.trim(),
   }),
+  Object.freeze({
+    version: '009_prioritize_sustained_writes_over_message_search',
+    sql: `
+      DROP INDEX IF EXISTS logs_message_trgm_idx;
+    `.trim(),
+  }),
 ]);

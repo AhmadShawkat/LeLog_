@@ -89,7 +89,7 @@ async function runSmokeTest() {
     '--command',
     'SELECT count(*) FROM schema_migrations',
   ]).trim();
-  assert.equal(appliedMigrations, '8');
+  assert.equal(appliedMigrations, '9');
 
   const hstoreSchema = runCompose([
     'exec',
@@ -109,14 +109,15 @@ async function runSmokeTest() {
        format_type(attribute.atttypid, attribute.atttypmod),
        EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hstore'),
        'fastupdate=on' = ANY(index.reloptions),
-       'gin_pending_list_limit=4096' = ANY(index.reloptions)
+       'gin_pending_list_limit=4096' = ANY(index.reloptions),
+       to_regclass('logs_message_trgm_idx') IS NULL
      FROM pg_attribute AS attribute
      CROSS JOIN pg_class AS index
      WHERE attribute.attrelid = 'logs'::regclass
        AND attribute.attname = 'attributes_text'
        AND index.oid = 'logs_attributes_text_gin_idx'::regclass`,
   ]).trim();
-  assert.equal(hstoreSchema, 'hstore|t|t|t');
+  assert.equal(hstoreSchema, 'hstore|t|t|t|t');
 
   const healthy = await getHealth();
   assert.equal(healthy.response.status, 200);

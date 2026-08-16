@@ -14,6 +14,7 @@ describe('migrations', () => {
       '006_tune_logs_autovacuum_thresholds',
       '007_convert_attribute_lookup_to_hstore',
       '008_bound_hstore_gin_pending_list',
+      '009_prioritize_sustained_writes_over_message_search',
     ]);
     expect(new Set(versions).size).toBe(versions.length);
   });
@@ -117,5 +118,14 @@ describe('migrations', () => {
     expect(pendingList).toMatch(/fastupdate = on/);
     expect(pendingList).toMatch(/gin_pending_list_limit = 4096/);
     expect(pendingList).not.toMatch(/logs_message_trgm_idx/);
+  });
+
+  it('trades indexed message search for sustained write capacity', () => {
+    const sustainedWrites = migrations[8]?.sql ?? '';
+
+    expect(sustainedWrites).toMatch(
+      /DROP INDEX IF EXISTS logs_message_trgm_idx/,
+    );
+    expect(sustainedWrites).not.toMatch(/logs_attributes_text_gin_idx/);
   });
 });
