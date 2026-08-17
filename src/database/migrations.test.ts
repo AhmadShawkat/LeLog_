@@ -15,6 +15,7 @@ describe('migrations', () => {
       '007_convert_attribute_lookup_to_hstore',
       '008_bound_hstore_gin_pending_list',
       '009_prioritize_sustained_writes_over_message_search',
+      '010_add_exact_minute_rollups',
     ]);
     expect(new Set(versions).size).toBe(versions.length);
   });
@@ -127,5 +128,16 @@ describe('migrations', () => {
       /DROP INDEX IF EXISTS logs_message_trgm_idx/,
     );
     expect(sustainedWrites).not.toMatch(/logs_attributes_text_gin_idx/);
+  });
+
+  it('creates and backfills the PostgreSQL minute rollup', () => {
+    const rollup = migrations[9]?.sql ?? '';
+
+    expect(rollup).toMatch(/CREATE TABLE log_minute_aggregates/);
+    expect(rollup).toMatch(/PRIMARY KEY \(bucket_start, service, level\)/);
+    expect(rollup).toMatch(/INSERT INTO log_minute_aggregates/);
+    expect(rollup).toMatch(/date_bin/);
+    expect(rollup).toMatch(/COUNT\(\*\)::bigint/);
+    expect(rollup).toMatch(/FROM logs/);
   });
 });

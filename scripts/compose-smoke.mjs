@@ -15,7 +15,12 @@ function runCompose(arguments_) {
     ['compose', '--project-name', projectName, ...arguments_],
     {
       encoding: 'utf8',
-      env: { ...process.env, APP_PORT: applicationPort, DB_PORT: '0' },
+      env: {
+        ...process.env,
+        APP_PORT: applicationPort,
+        DB_PORT: '0',
+        RETENTION_INTERVAL_MS: '1000',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
@@ -89,7 +94,7 @@ async function runSmokeTest() {
     '--command',
     'SELECT count(*) FROM schema_migrations',
   ]).trim();
-  assert.equal(appliedMigrations, '9');
+  assert.equal(appliedMigrations, '10');
 
   const hstoreSchema = runCompose([
     'exec',
@@ -110,14 +115,15 @@ async function runSmokeTest() {
        EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hstore'),
        'fastupdate=on' = ANY(index.reloptions),
        'gin_pending_list_limit=4096' = ANY(index.reloptions),
-       to_regclass('logs_message_trgm_idx') IS NULL
+       to_regclass('logs_message_trgm_idx') IS NULL,
+       to_regclass('log_minute_aggregates') IS NOT NULL
      FROM pg_attribute AS attribute
      CROSS JOIN pg_class AS index
      WHERE attribute.attrelid = 'logs'::regclass
        AND attribute.attname = 'attributes_text'
        AND index.oid = 'logs_attributes_text_gin_idx'::regclass`,
   ]).trim();
-  assert.equal(hstoreSchema, 'hstore|t|t|t|t');
+  assert.equal(hstoreSchema, 'hstore|t|t|t|t|t');
 
   const healthy = await getHealth();
   assert.equal(healthy.response.status, 200);
@@ -191,6 +197,24 @@ async function runSmokeTest() {
   ]).trim();
   assert.equal(storedLog, 'compose-smoke|1|1|false\ncompose-smoke|2|2|true');
 
+  const storedRollup = runCompose([
+    'exec',
+    '--no-TTY',
+    'database',
+    'psql',
+    '--username',
+    'log_service',
+    '--dbname',
+    'log_service',
+    '--tuples-only',
+    '--no-align',
+    '--command',
+    "SELECT count FROM log_minute_aggregates WHERE bucket_start = date_bin(INTERVAL '1 minute', TIMESTAMPTZ '" +
+      firstTimestamp +
+      "', TIMESTAMPTZ '2001-01-01 00:00:00+00') AND service = 'compose-smoke' AND level = 'info'",
+  ]).trim();
+  assert.equal(storedRollup, '2');
+
   const queryParameters = new URLSearchParams({
     service: 'compose-smoke',
     level: 'info',
@@ -246,6 +270,72 @@ async function runSmokeTest() {
       },
     ],
   });
+
+  const rollupAggregateParameters = new URLSearchParams(aggregateParameters);
+  rollupAggregateParameters.delete('attr.region');
+  const rollupAggregation = await getJson(
+    `/logs/aggregate?${rollupAggregateParameters}`,
+  );
+  assert.equal(rollupAggregation.response.status, 200);
+  assert.deepEqual(rollupAggregation.body, aggregation.body);
+
+  const partialMinuteParameters = new URLSearchParams({
+    since: isoTimestamp(new Date(bucketStart.getTime() + 15_000)),
+    until: isoTimestamp(new Date(bucketStart.getTime() + 25_000)),
+    bucket: '1m',
+    service: 'compose-smoke',
+  });
+  const partialMinuteAggregation = await getJson(
+    `/logs/aggregate?${partialMinuteParameters}`,
+  );
+  assert.equal(partialMinuteAggregation.response.status, 200);
+  assert.deepEqual(partialMinuteAggregation.body, {
+    buckets: [
+      {
+        start: isoTimestamp(bucketStart),
+        count: 1,
+        group: null,
+      },
+    ],
+  });
+
+  const expiredTimestamp = isoTimestamp(
+    new Date(Date.now() - 91 * 24 * 60 * 60 * 1_000),
+  );
+  const expiredIngestion = await postLogs([
+    {
+      timestamp: expiredTimestamp,
+      service: 'expired-smoke',
+      level: 'warn',
+      message: 'retention removes raw and rollup rows',
+      attributes: {},
+    },
+  ]);
+  assert.equal(expiredIngestion.response.status, 200);
+  assert.equal(expiredIngestion.body.accepted, 1);
+
+  let retainedCounts = '1|1';
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    retainedCounts = runCompose([
+      'exec',
+      '--no-TTY',
+      'database',
+      'psql',
+      '--username',
+      'log_service',
+      '--dbname',
+      'log_service',
+      '--tuples-only',
+      '--no-align',
+      '--field-separator',
+      '|',
+      '--command',
+      "SELECT (SELECT COUNT(*) FROM logs WHERE service = 'expired-smoke'), (SELECT COUNT(*) FROM log_minute_aggregates WHERE service = 'expired-smoke')",
+    ]).trim();
+    if (retainedCounts === '0|0') break;
+    await delay(500);
+  }
+  assert.equal(retainedCounts, '0|0');
 
   runCompose(['stop', 'database']);
 

@@ -14,6 +14,23 @@ function entry(sequence: number): ValidatedLogEntry {
 }
 
 describe('createLogBatchWriter', () => {
+  it('coalesces up to 4,000 rows by default', async () => {
+    const insertBatch = vi.fn().mockResolvedValue(undefined);
+    const writer = createLogBatchWriter({} as never, {}, insertBatch);
+    const writes = Array.from({ length: 40 }, (_, request) =>
+      writer.write(
+        Array.from({ length: 100 }, (_, offset) =>
+          entry((request * 100 + offset) % 60),
+        ),
+      ),
+    );
+
+    await expect(Promise.all(writes)).resolves.toHaveLength(40);
+    expect(insertBatch).toHaveBeenCalledOnce();
+    expect(insertBatch.mock.calls[0]?.[1]).toHaveLength(4_000);
+    await writer.close();
+  });
+
   it('coalesces pending requests and resolves them after one durable insert', async () => {
     const inserted: ValidatedLogEntry[][] = [];
     const insertBatch = vi.fn(async (_pool, entries) => {

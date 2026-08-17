@@ -131,4 +131,29 @@ export const migrations: readonly Migration[] = Object.freeze([
       DROP INDEX IF EXISTS logs_message_trgm_idx;
     `.trim(),
   }),
+  Object.freeze({
+    version: '010_add_exact_minute_rollups',
+    sql: `
+      CREATE TABLE log_minute_aggregates (
+        bucket_start TIMESTAMPTZ NOT NULL,
+        service TEXT NOT NULL,
+        level TEXT NOT NULL,
+        count BIGINT NOT NULL CHECK (count > 0),
+        PRIMARY KEY (bucket_start, service, level)
+      );
+
+      INSERT INTO log_minute_aggregates (bucket_start, service, level, count)
+      SELECT
+        date_bin(
+          INTERVAL '1 minute',
+          event_timestamp,
+          TIMESTAMPTZ '2001-01-01 00:00:00+00'
+        ),
+        service,
+        level,
+        COUNT(*)::bigint
+      FROM logs
+      GROUP BY 1, 2, 3;
+    `.trim(),
+  }),
 ]);

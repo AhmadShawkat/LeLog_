@@ -250,7 +250,6 @@ export function aggregate() {
     until: new Date(datasetEndMs + 1).toISOString(),
     bucket: '1h',
     group_by: 'service',
-    'attr.run_id': runId,
   });
   const response = http.get(`${baseUrl}/logs/aggregate?${parameters}`, {
     tags: { operation: 'aggregate' },

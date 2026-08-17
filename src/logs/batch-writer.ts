@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import type { ValidatedLogEntry } from './log-entry.js';
 import { insertLogBatch } from './repository.js';
 
-const defaultMaximumBatchSize = 1_000;
+const defaultMaximumBatchSize = 4_000;
 const defaultMaximumConcurrentBatches = 2;
 const defaultFlushIntervalMs = 5;
 

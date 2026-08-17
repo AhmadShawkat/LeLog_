@@ -46,11 +46,39 @@ describe('buildAggregationQuery', () => {
     });
 
     expect(query.text).toContain('NULL::text AS group_value');
+    expect(query.text).toContain('FROM log_minute_aggregates');
+    expect(query.text).toContain('first_full_minute');
+    expect(query.text).toContain('last_full_minute');
+    expect(query.text).toContain('UNION ALL');
     expect(query.text).not.toContain('generate_series');
     expect(query.values).toEqual([
       '2026-08-01T00:00:00Z',
       '2026-08-02T00:00:00Z',
       '1 hour',
+    ]);
+  });
+
+  it('parameterizes service and level on both rollup and boundary reads', () => {
+    const query = buildAggregationQuery({
+      service: "api' OR true --",
+      level: 'warn',
+      since: '2026-08-01T00:00:30Z',
+      until: '2026-08-01T01:00:30Z',
+      attributes: [],
+      bucket: '5m',
+      groupBy: 'level',
+    });
+
+    expect(query.text.match(/service = \$4/g)).toHaveLength(2);
+    expect(query.text.match(/level = \$5/g)).toHaveLength(2);
+    expect(query.text).toContain('level AS group_value');
+    expect(query.text).not.toContain("api' OR true --");
+    expect(query.values).toEqual([
+      '2026-08-01T00:00:30Z',
+      '2026-08-01T01:00:30Z',
+      '5 minutes',
+      "api' OR true --",
+      'warn',
     ]);
   });
 });

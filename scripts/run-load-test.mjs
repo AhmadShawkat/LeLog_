@@ -615,15 +615,30 @@ async function runLoadTest() {
          SELECT
            date_bin(
              INTERVAL '1 hour',
-             event_timestamp,
+             bucket_start,
              TIMESTAMPTZ '2001-01-01 00:00:00+00'
            ) AS bucket_timestamp,
            service AS group_value,
-           COUNT(*)::bigint AS count
-         FROM logs
-         WHERE event_timestamp >= :'since'::timestamptz
-           AND event_timestamp < :'until'::timestamptz
-           AND attributes_text @> hstore('run_id', :'run_id')
+           SUM(count)::bigint AS count
+         FROM log_minute_aggregates
+         WHERE bucket_start >= date_bin(
+             INTERVAL '1 minute',
+             :'since'::timestamptz,
+             TIMESTAMPTZ '2001-01-01 00:00:00+00'
+           ) + INTERVAL '1 minute'
+             * CASE
+                 WHEN :'since'::timestamptz = date_bin(
+                   INTERVAL '1 minute',
+                   :'since'::timestamptz,
+                   TIMESTAMPTZ '2001-01-01 00:00:00+00'
+                 ) THEN 0
+                 ELSE 1
+               END
+           AND bucket_start < date_bin(
+             INTERVAL '1 minute',
+             :'until'::timestamptz,
+             TIMESTAMPTZ '2001-01-01 00:00:00+00'
+           )
          GROUP BY bucket_timestamp, group_value
          ORDER BY bucket_timestamp ASC, group_value ASC NULLS FIRST;`,
         aggregationPlanVariables,
