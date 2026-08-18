@@ -15,6 +15,7 @@ export function registerLogRoutes(app: FastifyInstance): void {
     return aggregateLogs(app.db, validation.filters);
   });
 
+  
   app.get('/logs', async (request, reply) => {
     const validation = validateLogQuery(request.query);
     if ('error' in validation) {
